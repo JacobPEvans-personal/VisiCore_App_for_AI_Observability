@@ -7,5 +7,6 @@
     <view name="sessions" />
     <view name="ai_session_time_accounting" />
     <view name="cache_performance" />
+    <view name="context_bloat" />
     <view name="search" />
 </nav>
