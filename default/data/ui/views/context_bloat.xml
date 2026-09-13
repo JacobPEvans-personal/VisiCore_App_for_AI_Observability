@@ -1,0 +1,189 @@
+<dashboard version="2" theme="dark">
+  <label>Context Bloat</label>
+  <description>Worst-first view of prompt_snapshot attachment size, by cwd/user/CLI</description>
+  <definition><![CDATA[
+{
+  "dataSources": {
+    "ds_base": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=ai_usage sourcetype=\"claude:code:prompt_snapshot\" | search repo=$repo_filter$ user=$user_filter$ cli=$cli_filter$",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      },
+      "name": "Base Prompt Snapshot Events"
+    },
+    "ds_repo_choices": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=ai_usage sourcetype=\"claude:code:prompt_snapshot\" | stats count by repo | sort repo",
+        "queryParameters": {
+          "earliest": "-7d@d",
+          "latest": "now"
+        }
+      },
+      "name": "Repo Choices"
+    },
+    "ds_user_choices": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=ai_usage sourcetype=\"claude:code:prompt_snapshot\" | stats count by user | sort user",
+        "queryParameters": {
+          "earliest": "-7d@d",
+          "latest": "now"
+        }
+      },
+      "name": "User Choices"
+    },
+    "ds_cli_choices": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=ai_usage sourcetype=\"claude:code:prompt_snapshot\" | stats count by cli | sort cli",
+        "queryParameters": {
+          "earliest": "-7d@d",
+          "latest": "now"
+        }
+      },
+      "name": "CLI Choices"
+    },
+    "ds_worst_first": {
+      "type": "ds.chain",
+      "options": {
+        "extend": "ds_base",
+        "query": "| stats max(att_bytes) as max_snapshot_bytes, max(system_prompt_bytes) as max_system_prompt_bytes, max(tools_bytes) as max_tools_bytes, count as snapshots, latest(source) as latest_file by repo, user, cli, agent | sort - max_snapshot_bytes | head 25 | rename repo as \"Repo\", user as \"User\", cli as \"CLI\", agent as \"Agent\", max_snapshot_bytes as \"Max Snapshot (bytes)\", max_system_prompt_bytes as \"Max systemPrompt (bytes)\", max_tools_bytes as \"Max tools (bytes)\", snapshots as \"Snapshots\", latest_file as \"Latest File\""
+      },
+      "name": "Worst-First Table"
+    },
+    "ds_worst_by_repo": {
+      "type": "ds.chain",
+      "options": {
+        "extend": "ds_base",
+        "query": "| stats max(att_bytes) as max_snapshot_bytes by repo | sort - max_snapshot_bytes | head 15"
+      },
+      "name": "Worst Snapshot by Repo"
+    },
+    "ds_kpi_max": {
+      "type": "ds.chain",
+      "options": {
+        "extend": "ds_base",
+        "query": "| stats max(att_bytes) as count"
+      },
+      "name": "KPI Largest Snapshot"
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_timerange": {
+      "type": "input.timerange",
+      "options": {
+        "token": "global_time",
+        "defaultValue": "-7d@d,now"
+      },
+      "title": "Time Range"
+    },
+    "input_repo": {
+      "type": "input.dropdown",
+      "options": {
+        "token": "repo_filter",
+        "defaultValue": "*",
+        "items": [{"label": "All", "value": "*"}],
+        "data": {
+          "primary": {
+            "type": "ds.search",
+            "options": {
+              "extend": "ds_repo_choices"
+            }
+          }
+        },
+        "valueField": "repo",
+        "labelField": "repo"
+      },
+      "title": "Repo (cwd)"
+    },
+    "input_user": {
+      "type": "input.dropdown",
+      "options": {
+        "token": "user_filter",
+        "defaultValue": "*",
+        "items": [{"label": "All", "value": "*"}],
+        "data": {
+          "primary": {
+            "type": "ds.search",
+            "options": {
+              "extend": "ds_user_choices"
+            }
+          }
+        },
+        "valueField": "user",
+        "labelField": "user"
+      },
+      "title": "User"
+    },
+    "input_cli": {
+      "type": "input.dropdown",
+      "options": {
+        "token": "cli_filter",
+        "defaultValue": "*",
+        "items": [{"label": "All", "value": "*"}],
+        "data": {
+          "primary": {
+            "type": "ds.search",
+            "options": {
+              "extend": "ds_cli_choices"
+            }
+          }
+        },
+        "valueField": "cli",
+        "labelField": "cli"
+      },
+      "title": "CLI"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "options": {},
+    "structure": [
+      {"item": "viz_kpi_max", "type": "block", "position": {"x": 0, "y": 0, "w": 300, "h": 120}},
+      {"item": "viz_worst_by_repo", "type": "block", "position": {"x": 300, "y": 0, "w": 900, "h": 300}},
+      {"item": "viz_worst_first", "type": "block", "position": {"x": 0, "y": 300, "w": 1200, "h": 400}}
+    ],
+    "globalInputs": ["input_timerange", "input_repo", "input_user", "input_cli"]
+  },
+  "title": "Context Bloat",
+  "description": "Worst-first prompt_snapshot size by repo (cwd), user, and CLI. Sizes only — no token counts (see prompt_snapshot ingest notes: byte estimates run ~18% low against message.usage).",
+  "visualizations": {
+    "viz_kpi_max": {
+      "type": "splunk.singlevalue",
+      "title": "Largest Snapshot (bytes)",
+      "dataSources": {
+        "primary": "ds_kpi_max"
+      },
+      "options": {
+        "majorValue": "> primary | seriesByIndex(0)"
+      }
+    },
+    "viz_worst_by_repo": {
+      "type": "splunk.bar",
+      "title": "Worst Snapshot Size by Repo",
+      "dataSources": {
+        "primary": "ds_worst_by_repo"
+      },
+      "options": {
+        "xField": "max_snapshot_bytes",
+        "yField": "> primary | seriesByName('repo')"
+      }
+    },
+    "viz_worst_first": {
+      "type": "splunk.table",
+      "title": "Worst-First: Repo / User / CLI / Agent",
+      "dataSources": {
+        "primary": "ds_worst_first"
+      },
+      "options": {}
+    }
+  }
+}
+  ]]></definition>
+</dashboard>
