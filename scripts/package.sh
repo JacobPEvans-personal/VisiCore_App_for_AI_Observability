@@ -17,23 +17,11 @@ mkdir -p "$BUILD_DIR"
 # Create tarball with proper root directory name
 echo "Packaging $APP_NAME v${version}..."
 tar -czf "$BUILD_DIR/${APP_NAME}-${version}.tar.gz" \
-    --transform "s,^\.,$APP_NAME," \
+    --transform "s,^,${APP_NAME}/," \
     -C "$REPO_ROOT" \
-    --exclude='.git' \
-    --exclude='build' \
-    --exclude='.direnv' \
-    --exclude='scripts' \
-    --exclude='CLAUDE.md' \
-    --exclude='README.md' \
-    --exclude='.gitignore' \
-    --exclude='.DS_Store' \
-    --exclude='local' \
-    --exclude='.vscode' \
-    --exclude='.idea' \
-    --exclude='*.swp' \
-    --exclude='*.swo' \
-    --exclude='*~' \
-    .
+    app.manifest \
+    default \
+    metadata
 
 echo "  -> ${APP_NAME}-${version}.tar.gz"
 echo ""
